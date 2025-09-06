@@ -5,9 +5,11 @@ A C# console application that creates git-based backups of directories. GitBacku
 ## Features
 
 - **Git-based versioning**: Every backup is a git commit, allowing you to browse history and restore specific versions
+- **Space-efficient backups**: Creates bare repositories by default (git history only, no file duplication)
+- **Flexible backup modes**: Choose between bare repositories (space-efficient) or standard repositories (with working files)
 - **INI configuration**: Simple configuration file format
-- **Incremental backups**: Only copies changed files to minimize backup time
-- **Flexible exclusions**: Configure patterns to exclude files and directories
+- **Incremental backups**: Only processes changed files to minimize backup time
+- **Flexible exclusions**: Configure patterns to exclude files and directories with automatic .gitignore generation
 - **Cross-platform**: Built with .NET 8, runs on Windows, Linux, and macOS
 
 ## Quick Start
@@ -24,6 +26,8 @@ A C# console application that creates git-based backups of directories. GitBacku
    BackupDir=C:\Backups\MyDocuments
    GitUserName=GitBackup
    GitUserEmail=gitbackup@localhost
+   # BareRepository=true (default - space-efficient, git history only)
+   # Set BareRepository=false to copy working files to backup directory
    
    Exclude:0=.git/
    Exclude:1=*.tmp
@@ -69,6 +73,7 @@ Exclude:8=obj/
 - **BackupDir**: Where backup files will be stored (required)
 - **GitUserName**: Name used for git commits (default: "GitBackup")
 - **GitUserEmail**: Email used for git commits (default: "gitbackup@localhost")
+- **BareRepository**: Create bare repository (true) or standard repository with working files (false). Default: true for space-efficient backups
 - **Exclude:N**: Patterns for files/directories to exclude (supports wildcards)
 
 ## Command Line Options

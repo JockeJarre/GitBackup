@@ -32,8 +32,9 @@ public class GitBackupConfig
 
     /// <summary>
     /// Whether to create a bare repository (no working directory files)
+    /// Default is true for space-efficient backups
     /// </summary>
-    public bool BareRepository { get; set; } = false;
+    public bool BareRepository { get; set; } = true;
 
     /// <summary>
     /// Validates the configuration
