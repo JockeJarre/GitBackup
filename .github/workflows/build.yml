@@ -112,15 +112,20 @@ jobs:
       if: matrix.os == 'ubuntu-latest' && always()
       run: |
         echo "## 🐧 Linux Test Results" >> $GITHUB_STEP_SUMMARY
-        if [ -f "test_results_linux/report.html" ]; then
+        # Check for timestamped report files
+        if ls test_results_linux/report*.html 1> /dev/null 2>&1; then
           echo "✅ Robot Framework tests completed" >> $GITHUB_STEP_SUMMARY
-          if [ -f "test_results_linux/output.xml" ]; then
-            # Extract test statistics if available
+          # Check for timestamped output files
+          if ls test_results_linux/output*.xml 1> /dev/null 2>&1; then
             echo "### Test Statistics:" >> $GITHUB_STEP_SUMMARY
-            grep -o "test.*passed.*failed" test_results_linux/output.xml | head -1 >> $GITHUB_STEP_SUMMARY || echo "Statistics not available" >> $GITHUB_STEP_SUMMARY
+            # Use the first output file found
+            output_file=$(ls test_results_linux/output*.xml | head -1)
+            grep -o "test.*passed.*failed" "$output_file" | head -1 >> $GITHUB_STEP_SUMMARY || echo "Statistics not available" >> $GITHUB_STEP_SUMMARY
           fi
         else
           echo "❌ Robot Framework tests failed to generate report" >> $GITHUB_STEP_SUMMARY
+          echo "Files in test_results_linux/:" >> $GITHUB_STEP_SUMMARY
+          ls -la test_results_linux/ >> $GITHUB_STEP_SUMMARY || echo "Directory does not exist" >> $GITHUB_STEP_SUMMARY
         fi
         
     - name: Upload Test Results (Windows)
@@ -136,19 +141,39 @@ jobs:
       shell: pwsh
       run: |
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## 🪟 Windows Test Results"
-        if (Test-Path "test_results_windows/report.html") {
+        # Check for timestamped report files
+        if (Get-ChildItem -Path "test_results_windows/report*.html" -ErrorAction SilentlyContinue) {
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "✅ Robot Framework tests completed"
-          if (Test-Path "test_results_windows/output.xml") {
+          # Check for timestamped output files
+          $outputFiles = Get-ChildItem -Path "test_results_windows/output*.xml" -ErrorAction SilentlyContinue
+          if ($outputFiles) {
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Test Statistics:"
             try {
-              $stats = Select-String -Path "test_results_windows/output.xml" -Pattern "test.*passed.*failed" | Select-Object -First 1
-              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $stats.Line
+              # Use the first output file found
+              $outputFile = $outputFiles[0].FullName
+              $stats = Select-String -Path $outputFile -Pattern "test.*passed.*failed" | Select-Object -First 1
+              if ($stats) {
+                Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $stats.Line
+              } else {
+                Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Statistics not available"
+              }
             } catch {
               Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Statistics not available"
             }
           }
         } else {
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "❌ Robot Framework tests failed to generate report"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Files in test_results_windows/:"
+          try {
+            $files = Get-ChildItem -Path "test_results_windows/" -ErrorAction SilentlyContinue
+            if ($files) {
+              $files | ForEach-Object { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $_.Name }
+            } else {
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Directory does not exist or is empty"
+            }
+          } catch {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Could not list directory contents"
+          }
         }
 
   build:
