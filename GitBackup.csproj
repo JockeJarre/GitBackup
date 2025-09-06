@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    
+    <!-- Version Information -->
+    <AssemblyTitle>GitBackup</AssemblyTitle>
+    <AssemblyDescription>Git-based Directory Backup Tool</AssemblyDescription>
+    <AssemblyCompany>GitBackup Project</AssemblyCompany>
+    <AssemblyProduct>GitBackup</AssemblyProduct>
+    <AssemblyCopyright>Copyright © $(AssemblyCompany) $([System.DateTime]::Now.Year)</AssemblyCopyright>
+    
+    <!-- Version will be set by build process -->
+    <Version Condition="'$(Version)' == ''">1.0.0.0</Version>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">1.0.0.0</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">1.0.0.0</FileVersion>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version)</InformationalVersion>
+    
+    <!-- Build number from CI -->
+    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    
+    <!-- Enable deterministic builds -->
+    <Deterministic>true</Deterministic>
+    
+    <!-- Generate Assembly Info -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommandLineParser" Version="2.9.1" />
+    <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Ini" Version="9.0.8" />
+  </ItemGroup>
+
+</Project>

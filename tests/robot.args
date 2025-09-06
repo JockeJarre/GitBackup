@@ -1,0 +1,41 @@
+# Robot Framework Configuration File for GitBackup
+# This file can be used with: robot --argumentfile robot.args tests/
+
+--outputdir
+test_results
+
+--reporttitle
+GitBackup Test Report
+
+--logtitle  
+GitBackup Test Execution Log
+
+--reportbackground
+#f0f0f0
+
+--timestampoutputs
+
+--splitlog
+
+--loglevel
+INFO
+
+--include
+smoke
+
+--exclude
+manual
+
+--metadata
+Application:GitBackup
+Version:1.0.0
+Platform:Cross-Platform
+Framework:Robot Framework
+
+--listener
+_listeners/TestListener.py:test_results/listener.log
+
+--doc
+Automated tests for GitBackup - Git-based Directory Backup Tool. 
+These tests verify core functionality across Windows and Linux platforms
+including command-line interface, configuration handling, and backup operations.

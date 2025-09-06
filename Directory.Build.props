@@ -1,0 +1,18 @@
+<Project>
+  <!-- Common properties for all projects -->
+  <PropertyGroup>
+    <!-- Default version information - will be overridden by CI -->
+    <VersionPrefix Condition="'$(VersionPrefix)' == ''">1.0.0</VersionPrefix>
+    <VersionSuffix Condition="'$(VersionSuffix)' == ''">dev</VersionSuffix>
+    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    
+    <!-- Set version with build number -->
+    <Version Condition="'$(VersionSuffix)' != ''">$(VersionPrefix)-$(VersionSuffix).$(BuildNumber)</Version>
+    <Version Condition="'$(VersionSuffix)' == ''">$(VersionPrefix).$(BuildNumber)</Version>
+    
+    <!-- Assembly versions -->
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$(VersionPrefix).$(BuildNumber)</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">$(VersionPrefix).$(BuildNumber)</FileVersion>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version)</InformationalVersion>
+  </PropertyGroup>
+</Project>

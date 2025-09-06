@@ -1,0 +1,239 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install Robot Framework
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r tests/requirements.txt
+        
+    - name: Get build number
+      id: build_number
+      shell: bash
+      run: |
+        BUILD_NUMBER=$(git rev-list --count HEAD)
+        echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+        echo "Build number: $BUILD_NUMBER"
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build
+      run: |
+        dotnet build --no-restore --configuration Release \
+          -p:VersionPrefix=1.0.0 \
+          -p:VersionSuffix="" \
+          -p:BuildNumber=${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:AssemblyVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:FileVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+          
+    - name: Run Robot Framework Tests (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        export PATH="$PWD/bin/Release/net8.0:$PATH"
+        python -m robot \
+          --outputdir test_results_linux \
+          --timestampoutputs \
+          --reporttitle "GitBackup Tests - Linux" \
+          --logtitle "GitBackup Test Log - Linux" \
+          --variable GITBACKUP_EXE:./bin/Release/net8.0/GitBackup \
+          tests/gitbackup_tests.robot tests/linux_tests.robot
+          
+    - name: Run Robot Framework Tests (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        $env:PATH = "$pwd/bin/Release/net8.0;$env:PATH"
+        python -m robot `
+          --outputdir test_results_windows `
+          --timestampoutputs `
+          --reporttitle "GitBackup Tests - Windows" `
+          --logtitle "GitBackup Test Log - Windows" `
+          --variable GITBACKUP_EXE:./bin/Release/net8.0/GitBackup.exe `
+          tests/gitbackup_tests.robot tests/windows_tests.robot
+          
+    - name: Upload Test Results (Linux)
+      if: matrix.os == 'ubuntu-latest' && always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-linux
+        path: test_results_linux/
+        retention-days: 30
+        
+    - name: Upload Test Results (Windows)
+      if: matrix.os == 'windows-latest' && always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-windows  
+        path: test_results_windows/
+        retention-days: 30
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Get build number
+      id: build_number
+      run: |
+        # Get the total commit count as build number
+        BUILD_NUMBER=$(git rev-list --count HEAD)
+        echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+        echo "Build number: $BUILD_NUMBER"
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build
+      run: |
+        dotnet build --no-restore --configuration Release \
+          -p:VersionPrefix=1.0.0 \
+          -p:VersionSuffix="" \
+          -p:BuildNumber=${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:AssemblyVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:FileVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+          
+    - name: Test
+      run: dotnet test --no-build --verbosity normal --configuration Release
+      continue-on-error: true
+      
+    - name: Publish Windows x64
+      run: |
+        dotnet publish --configuration Release --runtime win-x64 --self-contained false \
+          -p:VersionPrefix=1.0.0 \
+          -p:VersionSuffix="" \
+          -p:BuildNumber=${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:AssemblyVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:FileVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          --output ./publish/win-x64/
+          
+    - name: Publish Linux x64
+      run: |
+        dotnet publish --configuration Release --runtime linux-x64 --self-contained false \
+          -p:VersionPrefix=1.0.0 \
+          -p:VersionSuffix="" \
+          -p:BuildNumber=${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:AssemblyVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          -p:FileVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }} \
+          --output ./publish/linux-x64/
+          
+    - name: Create version info
+      run: |
+        echo "GitBackup v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}" > ./publish/VERSION.txt
+        echo "Build: ${{ github.run_number }}" >> ./publish/VERSION.txt
+        echo "Commit: ${{ github.sha }}" >> ./publish/VERSION.txt
+        echo "Date: $(date)" >> ./publish/VERSION.txt
+        
+    - name: Archive Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: GitBackup-Windows-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+        path: |
+          ./publish/win-x64/
+          ./publish/VERSION.txt
+          
+    - name: Archive Linux artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: GitBackup-Linux-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+        path: |
+          ./publish/linux-x64/
+          ./publish/VERSION.txt
+
+  release:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Get build number
+      id: build_number
+      run: |
+        BUILD_NUMBER=$(git rev-list --count HEAD)
+        echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+        
+    - name: Download Windows artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: GitBackup-Windows-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+        path: ./artifacts/windows/
+        
+    - name: Download Linux artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: GitBackup-Linux-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+        path: ./artifacts/linux/
+        
+    - name: Create zip packages
+      run: |
+        cd ./artifacts/windows
+        zip -r ../../GitBackup-Windows-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}.zip .
+        cd ../linux
+        tar -czf ../../GitBackup-Linux-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}.tar.gz .
+        cd ../..
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+        name: GitBackup v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+        body: |
+          ## GitBackup v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
+          
+          Automated release from commit ${{ github.sha }}
+          
+          ### Changes
+          - Build number: ${{ steps.build_number.outputs.BUILD_NUMBER }}
+          - GitHub run: ${{ github.run_number }}
+          
+          ### Downloads
+          - **Windows x64**: GitBackup-Windows-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}.zip
+          - **Linux x64**: GitBackup-Linux-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}.tar.gz
+          
+        files: |
+          GitBackup-Windows-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}.zip
+          GitBackup-Linux-x64-v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}.tar.gz
+        draft: false
+        prerelease: false
