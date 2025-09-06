@@ -82,7 +82,7 @@ jobs:
       working-directory: ${{ github.workspace }}
       run: |
         Write-Host "=== Running GitBackup Tests on Windows ==="
-        Write-Host "GitBackup executable: bin/Release/net8.0/GitBackup.exe"
+        Write-Host "GitBackup executable: $PWD/bin/Release/net8.0/GitBackup.exe"
         Write-Host "Working directory: $(Get-Location)"
         Write-Host "Files in bin/Release/net8.0/:"
         Get-ChildItem bin/Release/net8.0/ -ErrorAction SilentlyContinue
@@ -93,7 +93,7 @@ jobs:
             --timestampoutputs `
             --reporttitle "GitBackup Tests - Windows" `
             --logtitle "GitBackup Test Log - Windows" `
-            --variable GITBACKUP_EXE:bin/Release/net8.0/GitBackup.exe `
+            --variable GITBACKUP_EXE:"$PWD/bin/Release/net8.0/GitBackup.exe" `
             tests/gitbackup_tests.robot tests/windows_tests.robot
         } catch {
           Write-Host "=== Tests completed with error: $_ ==="
