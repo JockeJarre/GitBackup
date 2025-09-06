@@ -58,13 +58,12 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       working-directory: ${{ github.workspace }}
       run: |
-        chmod +x bin/Release/net8.0/GitBackup
         python -m robot \
           --outputdir test_results_linux \
           --timestampoutputs \
           --reporttitle "GitBackup Tests - Linux" \
           --logtitle "GitBackup Test Log - Linux" \
-          --variable GITBACKUP_EXE:bin/Release/net8.0/GitBackup \
+          --variable GITBACKUP_EXE:"dotnet bin/Release/net8.0/GitBackup.dll" \
           tests/gitbackup_tests.robot tests/linux_tests.robot
           
     - name: Run Robot Framework Tests (Windows)
