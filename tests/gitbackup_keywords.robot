@@ -24,9 +24,12 @@ Setup Test Environment
 Cleanup Test Environment
     [Documentation]    Clean up test environment
     Log    Cleaning up test environment
-    Remove Directory    ${CURDIR}${/}test_data    recursive=True
-    Remove Directory    C:${/}temp${/}gitbackup_test    recursive=True
-    Remove Directory    /tmp/gitbackup_test    recursive=True
+    # Handle Windows git repository file permissions
+    Run Keyword And Ignore Error    Run Process    attrib    -R    ${CURDIR}${/}test_data    /S    shell=True
+    Run Keyword And Ignore Error    Remove Directory    ${CURDIR}${/}test_data    recursive=True
+    Run Keyword And Ignore Error    Run Process    attrib    -R    C:${/}temp${/}gitbackup_test    /S    shell=True  
+    Run Keyword And Ignore Error    Remove Directory    C:${/}temp${/}gitbackup_test    recursive=True
+    Run Keyword And Ignore Error    Remove Directory    /tmp/gitbackup_test    recursive=True
 
 Create Test Files
     [Documentation]    Create sample files in the test root directory
@@ -55,9 +58,12 @@ Setup Valid Test Environment
 
 Cleanup Valid Test Environment
     [Documentation]    Clean up valid test environment
-    Remove Directory    ${TEST_ROOT_DIR}    recursive=True
-    Remove Directory    ${TEST_BACKUP_DIR}    recursive=True
-    Remove File    ${TEST_CONFIG_FILE}
+    # Handle Windows git repository file permissions
+    Run Keyword And Ignore Error    Run Process    attrib    -R    ${TEST_ROOT_DIR}    /S    shell=True
+    Run Keyword And Ignore Error    Run Process    attrib    -R    ${TEST_BACKUP_DIR}    /S    shell=True
+    Run Keyword And Ignore Error    Remove Directory    ${TEST_ROOT_DIR}    recursive=True
+    Run Keyword And Ignore Error    Remove Directory    ${TEST_BACKUP_DIR}    recursive=True
+    Run Keyword And Ignore Error    Remove File    ${TEST_CONFIG_FILE}
 
 Create Valid Config File
     [Documentation]    Create a valid configuration file for testing

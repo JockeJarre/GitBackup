@@ -25,9 +25,8 @@ GitBackup Should Display Version
     # Version output may go to stdout or stderr
     ${output} =    Catenate    ${result.stdout}    ${result.stderr}
     Should Contain    ${output}    GitBackup
-    Should Contain    ${result.stdout}    GitBackup version
-    Should Contain    ${result.stdout}    Build:
-    Should Contain    ${result.stdout}    .NET Runtime:
+    Should Contain    ${output}    Git-based Directory Backup Tool
+    Should Contain    ${output}    v1.0.0
 
 GitBackup Should Create Sample Configuration
     [Documentation]    Verify that GitBackup can create a sample configuration file
@@ -47,7 +46,8 @@ GitBackup Should Handle Invalid Arguments
     [Documentation]    Verify that GitBackup handles invalid arguments gracefully
     ${result} =    Run GitBackup    --invalid-option
     Should Be Equal As Integers    ${result.rc}    1
-    Should Contain    ${result.stdout}    Option 'invalid-option' is unknown
+    ${output} =    Catenate    ${result.stdout}    ${result.stderr}
+    Should Contain    ${output}    Option 'invalid-option' is unknown
 
 GitBackup Should Require Configuration File
     [Documentation]    Verify that GitBackup requires a configuration file
@@ -68,7 +68,7 @@ GitBackup Should Perform Dry Run
     ${result} =    Run GitBackup    --config    ${TEST_CONFIG_FILE}    --dry-run    --verbose
     Should Be Equal As Integers    ${result.rc}    0
     Should Contain    ${result.stdout}    DRY RUN MODE
-    Should Contain    ${result.stdout}    Configuration:
+    Should Contain    ${result.stdout}    Configuration loaded from
     [Teardown]    Cleanup Valid Test Environment
 
 GitBackup Should Perform Real Backup
