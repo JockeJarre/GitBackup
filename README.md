@@ -6,8 +6,9 @@ A C# console application that creates git-based backups of directories. GitBacku
 
 - **Git-based versioning**: Every backup is a git commit, allowing you to browse history and restore specific versions
 - **Space-efficient backups**: Creates bare repositories by default (git history only, no file duplication)
+- **High-performance multithreading**: Parallel file processing using all CPU cores for faster backups
 - **Flexible backup modes**: Choose between bare repositories (space-efficient) or standard repositories (with working files)
-- **INI configuration**: Simple configuration file format
+- **INI configuration**: Simple configuration file format with modern comma-separated exclude patterns
 - **Incremental backups**: Only processes changed files to minimize backup time
 - **Flexible exclusions**: Configure patterns to exclude files and directories with automatic .gitignore generation
 - **Cross-platform**: Built with .NET 8, runs on Windows, Linux, and macOS

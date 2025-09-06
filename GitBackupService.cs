@@ -368,97 +368,133 @@ public class GitBackupService
     }
 
     /// <summary>
-    /// Multi-threaded method to add files to tree (flattened structure for bare repository)
+    /// Producer-consumer method to add files to tree (flattened structure for bare repository)
+    /// Starts creating git objects immediately as files are read for fastest processing
     /// 
     /// Thread Safety Implementation:
-    /// - Parallel file reading: Safe (independent disk I/O operations)
-    /// - Sequential git object creation: Required for LibGit2Sharp thread safety
+    /// - Producer: Parallel file reading → Thread-safe queue (immediate processing)
+    /// - Consumer: Sequential git object creation (required for LibGit2Sharp safety)  
     /// - LibGit2Sharp Repository/ObjectDatabase is NOT thread-safe for concurrent writes
-    /// - Underlying libgit2 git_odb has internal locking but we avoid concurrent access
+    /// - Pipeline pattern: git objects start being created as soon as first files are read
+    /// 
+    /// References:
+    /// - LibGit2Sharp Issue #787: Maintainers recommend "run Git operation in worker thread"
+    /// - libgit2 threading.md: "libgit2 objects cannot be safely accessed by multiple threads"
     /// </summary>
     private int AddFilesToTreeSimple(TreeDefinition treeBuilder, string sourcePath, Repository repo)
     {
         var files = Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories);
         Console.WriteLine($"Found {files.Length} files to process...");
         
-        // Filter files in parallel
-        var validFiles = files.AsParallel()
-            .Where(file => !ShouldExcludeFile(file))
-            .ToArray();
-            
-        Console.WriteLine($"Processing {validFiles.Length} files after exclusions...");
-        
-        if (validFiles.Length == 0)
+        if (files.Length == 0)
             return 0;
 
-        // Process files in parallel to prepare blob data
-        var fileDataList = new List<(string flatName, byte[] data)>(validFiles.Length);
+        // Use producer-consumer pattern for immediate git object creation with inline exclusion filtering
+        // This avoids reading files that will be excluded, maximizing efficiency
+        var fileQueue = new System.Collections.Concurrent.ConcurrentQueue<(string flatName, byte[] data)>();
+        var producerFinished = false;
         var lockObj = new object();
-        var processed = 0;
+        var readCount = 0;
+        var excludedCount = 0;
+        var addedCount = 0;
         
-        Console.WriteLine("Reading files in parallel...");
-        
-        // Read files in parallel (safe - only reading from disk)
-        Parallel.ForEach(validFiles, new ParallelOptions 
-        { 
-            MaxDegreeOfParallelism = Environment.ProcessorCount 
-        }, file =>
+        Console.WriteLine("Starting parallel file processing with inline exclusion filtering...");
+
+        // Producer task: Check exclusions and read files in parallel
+        var producerTask = Task.Run(() =>
         {
-            try
+            Parallel.ForEach(files, new ParallelOptions 
+            { 
+                MaxDegreeOfParallelism = Environment.ProcessorCount 
+            }, file =>
             {
-                // Create a flattened filename (replace path separators with underscores)
-                var relativePath = Path.GetRelativePath(sourcePath, file);
-                var flatName = relativePath.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
-                
-                // Read file data
-                var data = File.ReadAllBytes(file);
-                
-                // Thread-safe addition to collection
-                lock (lockObj)
+                try
                 {
-                    fileDataList.Add((flatName, data));
-                    processed++;
-                    
-                    // Show progress every 100 files or at the end
-                    if (processed % 100 == 0 || processed == validFiles.Length)
+                    // Check exclusion first - avoid reading excluded files
+                    if (ShouldExcludeFile(file))
                     {
-                        Console.WriteLine($"Processed {processed}/{validFiles.Length} files ({(processed * 100.0 / validFiles.Length):F1}%)");
+                        lock (lockObj)
+                        {
+                            excludedCount++;
+                        }
+                        return;
+                    }
+                    
+                    // Create a flattened filename (replace path separators with underscores)
+                    var relativePath = Path.GetRelativePath(sourcePath, file);
+                    var flatName = relativePath.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
+                    
+                    // Read file data only if not excluded
+                    var data = File.ReadAllBytes(file);
+                    
+                    // Add to queue immediately - don't wait for all files
+                    fileQueue.Enqueue((flatName, data));
+                    
+                    lock (lockObj)
+                    {
+                        readCount++;
+                        
+                        // Show progress every 100 valid files read
+                        if (readCount % 100 == 0)
+                        {
+                            var processedCount = readCount + excludedCount;
+                            Console.WriteLine($"Processed {processedCount}/{files.Length} files - Read: {readCount}, Excluded: {excludedCount}, Git objects: {addedCount}");
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Failed to process file {file}: {ex.Message}");
-            }
-        });
-        
-        Console.WriteLine("Creating git objects sequentially...");
-        
-        // Create git objects sequentially for thread safety
-        // LibGit2Sharp Repository/ObjectDatabase operations are not thread-safe
-        // but git_odb (underlying object database) has internal locking
-        int addedCount = 0;
-        foreach (var (flatName, data) in fileDataList)
-        {
-            try
-            {
-                using var stream = new MemoryStream(data);
-                var blob = repo.ObjectDatabase.CreateBlob(stream);
-                treeBuilder.Add(flatName, blob, Mode.NonExecutableFile);
-                addedCount++;
-                
-                // Show progress for git object creation
-                if (addedCount % 200 == 0 || addedCount == fileDataList.Count)
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Created git objects: {addedCount}/{fileDataList.Count} ({(addedCount * 100.0 / fileDataList.Count):F1}%)");
+                    Console.WriteLine($"Warning: Failed to read file {file}: {ex.Message}");
+                }
+            });
+            
+            producerFinished = true;
+            Console.WriteLine($"Finished reading {readCount} files - git object creation continues...");
+        });
+
+        // Consumer: Create git objects as soon as files are available
+        Console.WriteLine("Creating git objects as files become available...");
+        
+        while (!producerFinished || !fileQueue.IsEmpty)
+        {
+            if (fileQueue.TryDequeue(out var fileData))
+            {
+                try
+                {
+                    using var stream = new MemoryStream(fileData.data);
+                    var blob = repo.ObjectDatabase.CreateBlob(stream);
+                    treeBuilder.Add(fileData.flatName, blob, Mode.NonExecutableFile);
+                    
+                    lock (lockObj)
+                    {
+                        addedCount++;
+                        
+                        // Show progress for git object creation
+                        if (addedCount % 50 == 0)
+                        {
+                            Console.WriteLine($"Created git objects: {addedCount} (streaming processing...)");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to create git object for {fileData.flatName}: {ex.Message}");
                 }
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine($"Warning: Failed to create git object for {flatName}: {ex.Message}");
+                // If queue is empty but producer isn't finished, wait a bit
+                if (!producerFinished)
+                {
+                    Thread.Sleep(1);
+                }
             }
         }
-        
+
+        // Wait for producer to complete
+        producerTask.Wait();
+
+        Console.WriteLine($"Completed: Created {addedCount} git objects from {readCount} files ({excludedCount} files excluded)");
         return addedCount;
     }
 
