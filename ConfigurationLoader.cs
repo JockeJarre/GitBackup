@@ -37,7 +37,12 @@ public class ConfigurationLoader
     {
         try 
         {
-            var configParser = new ConfigParser(iniFilePath);
+            // Configure parser for maximum multi-line flexibility
+            var configParser = new ConfigParser(iniFilePath, new ConfigParserSettings
+            {
+                MultiLineValues = MultiLineValues.Simple | MultiLineValues.AllowValuelessKeys | MultiLineValues.AllowEmptyTopSection,
+                Encoding = System.Text.Encoding.UTF8
+            });
 
             var config = new GitBackupConfig
             {
@@ -128,58 +133,75 @@ public class ConfigurationLoader
     /// Supports multiple formats:
     /// 1. Single line with comma-separated values: Exclude=pattern1,pattern2,pattern3
     /// 2. Multiple numbered keys: Exclude1=pattern1, Exclude2=pattern2, etc.
-    /// 3. Colon-numbered keys: Exclude:0=pattern1, Exclude:1=pattern2, etc.
-    /// 4. Multi-line values (Salaros supports continuation lines)
+    /// 3. Multi-line values: Patterns on separate lines after Exclude=
     /// </summary>
     private static List<string> LoadExcludePatternsFromSalaros(ConfigParser configParser)
     {
         var excludePatterns = new List<string>();
 
-        // Method 1: Try single comma-separated format first
+        // Method 1: Try to get the multi-line value from Exclude key
         var excludeValue = configParser.GetValue("GitBackup", "Exclude");
         if (!string.IsNullOrWhiteSpace(excludeValue))
         {
-            var commaSeparated = excludeValue.Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(p => p.Trim())
-                .Where(p => !string.IsNullOrWhiteSpace(p) && !p.StartsWith('#'));
-            excludePatterns.AddRange(commaSeparated);
+            // Debug: Show what we got from Salaros
+            Console.WriteLine($"[DEBUG] Raw Exclude value length: {excludeValue.Length}");
+            Console.WriteLine($"[DEBUG] Raw Exclude value: '{excludeValue}'");
+            
+            // Check if it's a multi-line value (contains newlines or multiple patterns)
+            if (excludeValue.Contains('\n') || excludeValue.Contains('\r'))
+            {
+                // Split multi-line value into individual patterns
+                var multilinePatterns = excludeValue.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => p.Trim())
+                    .Where(p => !string.IsNullOrWhiteSpace(p) && !p.StartsWith('#'));
+                excludePatterns.AddRange(multilinePatterns);
+                Console.WriteLine($"[DEBUG] Loaded {multilinePatterns.Count()} multi-line patterns from Exclude field");
+            }
+            else
+            {
+                // Single line - check if comma-separated
+                var commaSeparated = excludeValue.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => p.Trim())
+                    .Where(p => !string.IsNullOrWhiteSpace(p) && !p.StartsWith('#'));
+                excludePatterns.AddRange(commaSeparated);
+                Console.WriteLine($"[DEBUG] Loaded {commaSeparated.Count()} comma-separated patterns from Exclude field");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[DEBUG] No Exclude value found by Salaros");
         }
 
         // Method 2: Try numbered format (Exclude1, Exclude2, etc.) - ADD TO existing patterns
+        var numberedCount = 0;
         for (int i = 1; i <= 100; i++)
         {
             var patternValue = configParser.GetValue("GitBackup", $"Exclude{i}");
             if (!string.IsNullOrWhiteSpace(patternValue))
             {
                 excludePatterns.Add(patternValue.Trim());
+                numberedCount++;
             }
-            else if (i > 20 && excludePatterns.Count(p => p.Contains($"Exclude{i-1}")) == 0)
-            {
-                // Stop if we've checked 20 consecutive empty slots
-                break;
-            }
-        }
-
-        // Method 3: Try alternative numbered format with colon (Exclude:0, Exclude:1, etc.)
-        for (int i = 0; i <= 100; i++)
-        {
-            var patternValue = configParser.GetValue("GitBackup", $"Exclude:{i}");
-            if (!string.IsNullOrWhiteSpace(patternValue))
-            {
-                excludePatterns.Add(patternValue.Trim());
-            }
-            else if (i > 20 && excludePatterns.Count == 0)
+            else if (i > 20 && numberedCount == 0)
             {
                 // Stop if we've checked 20 consecutive empty slots and found nothing
                 break;
             }
         }
+        
+        if (numberedCount > 0)
+        {
+            Console.WriteLine($"[DEBUG] Loaded {numberedCount} numbered patterns (Exclude1, Exclude2, etc.)");
+        }
 
         // Filter out comments and empty patterns
-        return excludePatterns
+        var filtered = excludePatterns
             .Where(p => !string.IsNullOrWhiteSpace(p) && !p.StartsWith('#'))
             .Distinct()
             .ToList();
+            
+        Console.WriteLine($"[DEBUG] Total patterns after filtering: {filtered.Count}");
+        return filtered;
     }
 
     /// <summary>

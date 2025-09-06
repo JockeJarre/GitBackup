@@ -63,8 +63,8 @@ private static GitBackupConfig LoadFromIniWithSalaros(string iniFilePath)
 private static List<string> LoadExcludePatternsFromSalaros(ConfigParser parser)
 {
     // Method 1: Comma-separated format
-    // Method 2: Numbered format (Exclude1, Exclude2, etc.)
-    // Method 3: Multi-line format (line-by-line parsing)
+    // Method 2: Multi-line format with proper indentation
+    // Method 3: Line-by-line parsing with newline detection
 }
 ```
 - **`CommandLineOptions.cs`** - CLI argument definitions
@@ -103,48 +103,30 @@ Exclude=*.tmp,*.log,.git/,node_modules/
 RootDir=C:\Source\Directory
 BackupDir=C:\Backup\Directory
 
-# Multi-line exclusion patterns (one per line)
+# Multi-line exclusion patterns (one per line with indentation)
 Exclude=*.vpx
-*.directb2s
-*.exe
-**/assets
-**/Music
-!VPMAlias.txt
-**/*DMD*/
-*.png
-**Cache
+    *.directb2s
+    *.exe
+    **/assets
+    **/Music
+    !VPMAlias.txt
+    **/*DMD*/
+    *.png
+    **Cache
 ```
 
-#### 3. Numbered Format (Enhanced Organization)
+#### 3. Hybrid Format (Combining Both Approaches)
 ```ini
 [GitBackup]
-# Build outputs
-Exclude1=bin/
-Exclude2=obj/
-# Dependencies  
-Exclude3=node_modules/
-Exclude4=packages/
-# IDE files
-Exclude5=.vscode/
-Exclude6=.idea/
-```
-
-#### 4. Hybrid Format (Best of All Approaches)
-```ini
-[GitBackup]
-# Quick comma-separated basics
+# Basic comma-separated patterns
 Exclude=*.tmp,*.log,**/.git/
 
-# Additional numbered patterns for organization
-Exclude1=bin/
-Exclude2=obj/
-Exclude3=node_modules/
-
-# Complex multi-line patterns when needed
-ExcludeAdvanced=**/assets
-**/Music
-!important-file.txt
-**/*DMD*/
+# For complex configurations, use multi-line with indentation:
+# Exclude=*.vpx
+#     *.directb2s
+#     **/assets
+#     **/Music
+#     !VPMAlias.txt
 ```
 
 ## Pattern Matching & Exclusion System
@@ -182,25 +164,26 @@ Exclude=*.tmp,*.log,.git/
 # Advanced gitignore-style patterns
 Exclude=**/*.dll,**/bin/,**/obj/,!important.dll,build/**/cache/
 
-# Visual Pinball example (real-world multi-line usage)
+# Visual Pinball example (real-world multi-line usage with proper indentation)
 Exclude=*.vpx
-*.directb2s
-*.exe
-**/assets
-**/Music
-!VPMAlias.txt
-!ScreenRes.txt
-**/*DMD*/
-**/doc*
-**Cache
-*.png
-*.pdf
+    *.directb2s
+    *.exe
+    **/assets
+    **/Music
+    !VPMAlias.txt
+    !ScreenRes.txt
+    **/*DMD*/
+    **/doc*
+    **Cache
+    *.png
+    *.pdf
 ```
 
 #### Migration Notes
 - **Legacy patterns**: Old simple patterns continue to work
 - **Enhanced exclusion**: Complex directories now properly excluded (72% vs 46% in Visual Pinball example)
-- **Negation patterns**: Previously unsupported `!pattern` syntax now fully functional
+- **Multi-line patterns**: Use proper indentation for multi-line format
+- **Indentation requirement**: Continuation lines must be indented with spaces
 
 ## Git Integration Guidelines
 
