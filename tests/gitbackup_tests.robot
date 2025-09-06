@@ -119,7 +119,7 @@ Setup Test Environment
     [Documentation]    Initialize test environment
     Log    Setting up test environment
     Create Directory    ${CURDIR}${/}test_data
-    Set Test Variable    ${TEST_TIMEOUT}    30s
+    Set Suite Variable    ${TEST_TIMEOUT}    30s
     
 Cleanup Test Environment
     [Documentation]    Clean up test environment
