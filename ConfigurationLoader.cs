@@ -30,15 +30,8 @@ public class ConfigurationLoader
             BareRepository = bool.Parse(configuration["GitBackup:BareRepository"] ?? "true")
         };
 
-        // Load exclude patterns
-        var excludeSection = configuration.GetSection("GitBackup:Exclude");
-        if (excludeSection.Exists())
-        {
-            config.ExcludePatterns = excludeSection.GetChildren()
-                .Select(x => x.Value ?? string.Empty)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-        }
+        // Load exclude patterns - support multiple formats
+        config.ExcludePatterns = LoadExcludePatterns(configuration);
 
         // Add default exclude patterns if none specified
         if (!config.ExcludePatterns.Any())
@@ -54,6 +47,46 @@ public class ConfigurationLoader
         }
 
         return config;
+    }
+
+    /// <summary>
+    /// Loads exclude patterns from configuration, supporting multiple formats:
+    /// 1. Single line with comma-separated values: Exclude=pattern1,pattern2,pattern3
+    /// 2. Multiple numbered keys: Exclude1=pattern1, Exclude2=pattern2, etc.
+    /// 3. Multiple lines with same key (if INI provider supports it)
+    /// </summary>
+    private static List<string> LoadExcludePatterns(IConfiguration configuration)
+    {
+        var excludePatterns = new List<string>();
+        
+        // Method 1: Try single comma-separated format first
+        var excludeValue = configuration["GitBackup:Exclude"];
+        if (!string.IsNullOrWhiteSpace(excludeValue))
+        {
+            var commaSeparated = excludeValue.Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p) && !p.StartsWith('#'));
+            excludePatterns.AddRange(commaSeparated);
+        }
+        
+        // Method 2: Try numbered format (Exclude1, Exclude2, etc.)
+        if (!excludePatterns.Any())
+        {
+            for (int i = 1; i <= 50; i++) // Reasonable limit
+            {
+                var patternValue = configuration[$"GitBackup:Exclude{i}"];
+                if (!string.IsNullOrWhiteSpace(patternValue))
+                {
+                    excludePatterns.Add(patternValue.Trim());
+                }
+                else if (i > 10) // Stop if we've checked 10 consecutive empty slots
+                {
+                    break;
+                }
+            }
+        }
+        
+        return excludePatterns;
     }
 
     /// <summary>
@@ -79,15 +112,14 @@ public class ConfigurationLoader
             BareRepository=true
             
             # Files and patterns to exclude from backup
-            Exclude:0=.git/
-            Exclude:1=*.tmp
-            Exclude:2=*.temp
-            Exclude:3=*.log
-            Exclude:4=Thumbs.db
-            Exclude:5=.DS_Store
-            Exclude:6=node_modules/
-            Exclude:7=bin/
-            Exclude:8=obj/
+            # Comma-separated format (recommended):
+            Exclude=.git/,*.tmp,*.temp,*.log,Thumbs.db,.DS_Store,node_modules/,bin/,obj/
+            
+            # Alternative numbered format also supported:
+            # Exclude1=.git/
+            # Exclude2=*.tmp
+            # Exclude3=*.temp
+            # Exclude4=node_modules/
             """;
 
         File.WriteAllText(iniFilePath, sampleConfig);
