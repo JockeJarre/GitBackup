@@ -1,6 +1,2 @@
 # Robot Framework and dependencies for GitBackup testing
 robotframework==7.0.1
-robotframework-process==1.4.0
-robotframework-operatingsystem==1.0.0
-robotframework-collections==1.0.0
-robotframework-string==1.2.0
