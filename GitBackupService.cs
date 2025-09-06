@@ -194,7 +194,7 @@ public class GitBackupService
     }
 
     /// <summary>
-    /// Copies files from source to destination, respecting exclude patterns
+    /// Copies files from source to destination with parallel processing, respecting exclude patterns
     /// </summary>
     private async Task CopyChangedFilesAsync(string sourceDir, string destDir)
     {
@@ -210,31 +210,74 @@ public class GitBackupService
 
         var sourceInfo = new DirectoryInfo(sourceDir);
         var files = sourceInfo.GetFiles("*", SearchOption.AllDirectories);
-        var copiedCount = 0;
+        Console.WriteLine($"Found {files.Length} files to evaluate for copying...");
 
-        foreach (var file in files)
-        {
-            var relativePath = Path.GetRelativePath(sourceDir, file.FullName);
-            
-            // Check if file should be excluded
-            if (ShouldExcludeFile(relativePath))
-                continue;
-
-            var destFilePath = Path.Combine(destDir, relativePath);
-            var destFile = new FileInfo(destFilePath);
-
-            // Create directory if it doesn't exist
-            destFile.Directory?.Create();
-
-            // Copy if file is newer or doesn't exist
-            if (!destFile.Exists || file.LastWriteTime > destFile.LastWriteTime)
+        // Filter and prepare file operations in parallel
+        var filesToCopy = files.AsParallel()
+            .Select(file => new
             {
-                await Task.Run(() => file.CopyTo(destFilePath, true));
-                copiedCount++;
-            }
+                SourceFile = file,
+                RelativePath = Path.GetRelativePath(sourceDir, file.FullName),
+                DestPath = Path.Combine(destDir, Path.GetRelativePath(sourceDir, file.FullName))
+            })
+            .Where(item => !ShouldExcludeFile(item.RelativePath))
+            .Select(item => new
+            {
+                item.SourceFile,
+                item.RelativePath,
+                item.DestPath,
+                DestFile = new FileInfo(item.DestPath),
+                ShouldCopy = !File.Exists(item.DestPath) || item.SourceFile.LastWriteTime > new FileInfo(item.DestPath).LastWriteTime
+            })
+            .Where(item => item.ShouldCopy)
+            .ToArray();
+
+        Console.WriteLine($"Processing {filesToCopy.Length} files that need copying...");
+
+        if (filesToCopy.Length == 0)
+        {
+            Console.WriteLine("No files need to be copied");
+            return;
         }
 
-        Console.WriteLine($"Copied {copiedCount} files to backup directory");
+        // Copy files in parallel
+        var copiedCount = 0;
+        var lockObj = new object();
+
+        await Task.Run(() =>
+        {
+            Parallel.ForEach(filesToCopy, new ParallelOptions 
+            { 
+                MaxDegreeOfParallelism = Environment.ProcessorCount 
+            }, item =>
+            {
+                try
+                {
+                    // Create directory if it doesn't exist
+                    item.DestFile.Directory?.Create();
+
+                    // Copy file
+                    item.SourceFile.CopyTo(item.DestPath, true);
+
+                    lock (lockObj)
+                    {
+                        copiedCount++;
+                        
+                        // Show progress every 50 files or at the end
+                        if (copiedCount % 50 == 0 || copiedCount == filesToCopy.Length)
+                        {
+                            Console.WriteLine($"Copied {copiedCount}/{filesToCopy.Length} files ({(copiedCount * 100.0 / filesToCopy.Length):F1}%)");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to copy {item.RelativePath}: {ex.Message}");
+                }
+            });
+        });
+
+        Console.WriteLine($"Completed copying {copiedCount} files to backup directory");
     }
 
     /// <summary>
@@ -325,31 +368,89 @@ public class GitBackupService
     }
 
     /// <summary>
-    /// Simple method to add files to tree (flattened structure for bare repository)
+    /// Multi-threaded method to add files to tree (flattened structure for bare repository)
     /// </summary>
     private int AddFilesToTreeSimple(TreeDefinition treeBuilder, string sourcePath, Repository repo)
     {
         var files = Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories);
-        int fileCount = 0;
+        Console.WriteLine($"Found {files.Length} files to process...");
         
-        foreach (var file in files)
+        // Filter files in parallel
+        var validFiles = files.AsParallel()
+            .Where(file => !ShouldExcludeFile(file))
+            .ToArray();
+            
+        Console.WriteLine($"Processing {validFiles.Length} files after exclusions...");
+        
+        if (validFiles.Length == 0)
+            return 0;
+
+        // Process files in parallel to prepare blob data
+        var fileDataList = new List<(string flatName, byte[] data)>(validFiles.Length);
+        var lockObj = new object();
+        var processed = 0;
+        
+        Console.WriteLine("Reading files in parallel...");
+        
+        Parallel.ForEach(validFiles, new ParallelOptions 
+        { 
+            MaxDegreeOfParallelism = Environment.ProcessorCount 
+        }, file =>
         {
-            // Skip excluded files
-            if (ShouldExcludeFile(file))
-                continue;
-            
-            // Create a flattened filename (replace path separators with underscores)
-            var relativePath = Path.GetRelativePath(sourcePath, file);
-            var flatName = relativePath.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
-            
-            // Read file and create blob
-            using var stream = File.OpenRead(file);
-            var blob = repo.ObjectDatabase.CreateBlob(stream);
-            treeBuilder.Add(flatName, blob, Mode.NonExecutableFile);
-            fileCount++;
+            try
+            {
+                // Create a flattened filename (replace path separators with underscores)
+                var relativePath = Path.GetRelativePath(sourcePath, file);
+                var flatName = relativePath.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
+                
+                // Read file data
+                var data = File.ReadAllBytes(file);
+                
+                // Thread-safe addition to collection
+                lock (lockObj)
+                {
+                    fileDataList.Add((flatName, data));
+                    processed++;
+                    
+                    // Show progress every 100 files or at the end
+                    if (processed % 100 == 0 || processed == validFiles.Length)
+                    {
+                        Console.WriteLine($"Processed {processed}/{validFiles.Length} files ({(processed * 100.0 / validFiles.Length):F1}%)");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to process file {file}: {ex.Message}");
+            }
+        });
+        
+        Console.WriteLine("Creating git objects sequentially...");
+        
+        // Create git objects sequentially (thread-safe)
+        int addedCount = 0;
+        foreach (var (flatName, data) in fileDataList)
+        {
+            try
+            {
+                using var stream = new MemoryStream(data);
+                var blob = repo.ObjectDatabase.CreateBlob(stream);
+                treeBuilder.Add(flatName, blob, Mode.NonExecutableFile);
+                addedCount++;
+                
+                // Show progress for git object creation
+                if (addedCount % 200 == 0 || addedCount == fileDataList.Count)
+                {
+                    Console.WriteLine($"Created git objects: {addedCount}/{fileDataList.Count} ({(addedCount * 100.0 / fileDataList.Count):F1}%)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to create git object for {flatName}: {ex.Message}");
+            }
         }
         
-        return fileCount;
+        return addedCount;
     }
 
     /// <summary>
