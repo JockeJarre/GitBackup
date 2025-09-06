@@ -240,7 +240,7 @@ public class GitBackupService
             return;
         }
 
-        // Copy files in parallel
+        // Copy files in parallel (safe - independent file operations)
         var copiedCount = 0;
         var lockObj = new object();
 
@@ -369,6 +369,12 @@ public class GitBackupService
 
     /// <summary>
     /// Multi-threaded method to add files to tree (flattened structure for bare repository)
+    /// 
+    /// Thread Safety Implementation:
+    /// - Parallel file reading: Safe (independent disk I/O operations)
+    /// - Sequential git object creation: Required for LibGit2Sharp thread safety
+    /// - LibGit2Sharp Repository/ObjectDatabase is NOT thread-safe for concurrent writes
+    /// - Underlying libgit2 git_odb has internal locking but we avoid concurrent access
     /// </summary>
     private int AddFilesToTreeSimple(TreeDefinition treeBuilder, string sourcePath, Repository repo)
     {
@@ -392,6 +398,7 @@ public class GitBackupService
         
         Console.WriteLine("Reading files in parallel...");
         
+        // Read files in parallel (safe - only reading from disk)
         Parallel.ForEach(validFiles, new ParallelOptions 
         { 
             MaxDegreeOfParallelism = Environment.ProcessorCount 
@@ -427,7 +434,9 @@ public class GitBackupService
         
         Console.WriteLine("Creating git objects sequentially...");
         
-        // Create git objects sequentially (thread-safe)
+        // Create git objects sequentially for thread safety
+        // LibGit2Sharp Repository/ObjectDatabase operations are not thread-safe
+        // but git_odb (underlying object database) has internal locking
         int addedCount = 0;
         foreach (var (flatName, data) in fileDataList)
         {
