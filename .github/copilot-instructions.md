@@ -46,7 +46,27 @@ GitBackup/
 - **`Program.cs`** - Application entry point with CommandLineParser integration
 - **`GitBackupConfig.cs`** - Configuration model with validation
 - **`GitBackupService.cs`** - Core backup logic using LibGit2Sharp
-- **`ConfigurationLoader.cs`** - INI file loading and sample generation
+- **`ConfigurationLoader.cs`** - INI file loading with dual parser system (Salaros + Microsoft fallback) and enhanced multi-line support
+
+### Multi-Line Configuration Parser Implementation
+
+The enhanced ConfigurationLoader uses **Salaros ConfigParser** as primary parser with Microsoft Extensions Configuration as fallback:
+
+```csharp
+private static GitBackupConfig LoadFromIniWithSalaros(string iniFilePath)
+{
+    var configParser = new ConfigParser(iniFilePath);
+    // Load configuration with multi-line support
+    // Falls back to Microsoft parser if Salaros fails
+}
+
+private static List<string> LoadExcludePatternsFromSalaros(ConfigParser parser)
+{
+    // Method 1: Comma-separated format
+    // Method 2: Numbered format (Exclude1, Exclude2, etc.)
+    // Method 3: Multi-line format (line-by-line parsing)
+}
+```
 - **`CommandLineOptions.cs`** - CLI argument definitions
 
 ### Design Patterns
@@ -56,22 +76,76 @@ GitBackup/
 
 ## Configuration System
 
-### INI File Structure
-```ini
-[GitBackup]
-RootDir=C:\Source\Directory
-BackupDir=C:\Backup\Directory
-GitUserName=Backup User
-GitUserEmail=backup@example.com
-Exclude:0=*.tmp
-Exclude:1=.git/
-```
+### Enhanced INI File Support with Salaros ConfigParser
 
-### Key Principles
+GitBackup now uses **Salaros ConfigParser 0.3.8** as the primary INI parser, providing enhanced multi-line configuration support with automatic fallback to Microsoft Extensions Configuration for compatibility.
+
+### Key Configuration Principles
 - **Always validate** configuration before use
 - **Provide helpful defaults** for optional settings
 - **Support both relative and absolute paths**
 - **Handle cross-platform path differences**
+- **Multi-line patterns** for complex exclusion configurations
+
+### Configuration File Formats
+
+#### 1. Traditional Single-Line Format
+```ini
+[GitBackup]
+RootDir=C:\Source\Directory
+BackupDir=C:\Backup\Directory
+Exclude=*.tmp,*.log,.git/,node_modules/
+```
+
+#### 2. Enhanced Multi-Line Format (Salaros ConfigParser)
+```ini
+[GitBackup]
+RootDir=C:\Source\Directory
+BackupDir=C:\Backup\Directory
+
+# Multi-line exclusion patterns (one per line)
+Exclude=*.vpx
+*.directb2s
+*.exe
+**/assets
+**/Music
+!VPMAlias.txt
+**/*DMD*/
+*.png
+**Cache
+```
+
+#### 3. Numbered Format (Enhanced Organization)
+```ini
+[GitBackup]
+# Build outputs
+Exclude1=bin/
+Exclude2=obj/
+# Dependencies  
+Exclude3=node_modules/
+Exclude4=packages/
+# IDE files
+Exclude5=.vscode/
+Exclude6=.idea/
+```
+
+#### 4. Hybrid Format (Best of All Approaches)
+```ini
+[GitBackup]
+# Quick comma-separated basics
+Exclude=*.tmp,*.log,**/.git/
+
+# Additional numbered patterns for organization
+Exclude1=bin/
+Exclude2=obj/
+Exclude3=node_modules/
+
+# Complex multi-line patterns when needed
+ExcludeAdvanced=**/assets
+**/Music
+!important-file.txt
+**/*DMD*/
+```
 
 ## Pattern Matching & Exclusion System
 
@@ -108,8 +182,19 @@ Exclude=*.tmp,*.log,.git/
 # Advanced gitignore-style patterns
 Exclude=**/*.dll,**/bin/,**/obj/,!important.dll,build/**/cache/
 
-# Visual Pinball example (real-world usage)
-Exclude=*.vpx,*.exe,**/assets,**/Music,!VPMAlias.txt,**/*DMD*/
+# Visual Pinball example (real-world multi-line usage)
+Exclude=*.vpx
+*.directb2s
+*.exe
+**/assets
+**/Music
+!VPMAlias.txt
+!ScreenRes.txt
+**/*DMD*/
+**/doc*
+**Cache
+*.png
+*.pdf
 ```
 
 #### Migration Notes
