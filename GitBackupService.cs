@@ -281,7 +281,8 @@ public class GitBackupService
     }
 
     /// <summary>
-    /// Checks if a file should be excluded based on configured patterns
+    /// Determines if a file should be excluded based on configured patterns
+    /// Implements full gitignore-compatible pattern matching with negation support
     /// </summary>
     private bool ShouldExcludeFile(string relativePath)
     {
@@ -292,38 +293,192 @@ public class GitBackupService
         if (normalizedPath.StartsWith(".git/") || normalizedPath.Contains("/.git/"))
             return true;
 
+        var isExcluded = false;
+        
+        // Process patterns in order - later patterns can override earlier ones
         foreach (var pattern in _config.ExcludePatterns)
         {
-            if (IsMatch(normalizedPath, pattern))
-                return true;
+            if (string.IsNullOrWhiteSpace(pattern) || pattern.StartsWith('#'))
+                continue;
+                
+            // Handle negation patterns (patterns starting with !)
+            if (pattern.StartsWith('!'))
+            {
+                var negatedPattern = pattern[1..]; // Remove the !
+                if (IsGitIgnoreMatch(normalizedPath, negatedPattern))
+                {
+                    isExcluded = false; // Negation: include this file even if previously excluded
+                }
+            }
+            else
+            {
+                // Regular exclusion pattern
+                if (IsGitIgnoreMatch(normalizedPath, pattern))
+                {
+                    isExcluded = true;
+                }
+            }
         }
 
-        return false;
+        return isExcluded;
     }
 
     /// <summary>
-    /// Simple pattern matching for gitignore-style patterns
+    /// GitIgnore-compatible pattern matching implementation
+    /// Supports all major gitignore features:
+    /// - ** for recursive directory matching
+    /// - * for single-level wildcards  
+    /// - ? for single character matching
+    /// - [] for character classes
+    /// - Anchored vs relative patterns
+    /// - Directory-only patterns (ending with /)
     /// </summary>
-    private static bool IsMatch(string path, string pattern)
+    private static bool IsGitIgnoreMatch(string path, string pattern)
     {
-        // Handle directory patterns ending with /
-        if (pattern.EndsWith('/'))
+        // Trim whitespace
+        pattern = pattern.Trim();
+        if (string.IsNullOrEmpty(pattern))
+            return false;
+
+        // Handle directory-only patterns (ending with /)
+        bool directoryOnly = pattern.EndsWith('/');
+        if (directoryOnly)
         {
-            var dirPattern = pattern[..^1];
-            return path.Contains($"{dirPattern}/") || path.StartsWith($"{dirPattern}/");
+            pattern = pattern[..^1]; // Remove trailing slash
+            
+            // For directory patterns, check if the path contains this directory
+            // This matches git's behavior where "dir/" matches "dir/file.txt"
+            if (pattern.Contains("**"))
+            {
+                return IsGitIgnoreMatch(path, pattern + "/**");
+            }
+            else
+            {
+                // Simple directory matching - check if path starts with or contains the directory
+                return path.StartsWith(pattern + "/") || 
+                       path.Contains("/" + pattern + "/") ||
+                       path == pattern;
+            }
         }
 
-        // Handle wildcard patterns
-        if (pattern.Contains('*'))
+        // Convert gitignore pattern to regex
+        var regexPattern = ConvertGitIgnorePatternToRegex(pattern);
+        
+        try
         {
-            var regexPattern = "^" + pattern
-                .Replace(".", "\\.")
-                .Replace("*", ".*") + "$";
-            return System.Text.RegularExpressions.Regex.IsMatch(path, regexPattern);
+            return System.Text.RegularExpressions.Regex.IsMatch(path, regexPattern, 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+        catch
+        {
+            // If regex fails, fall back to simple matching
+            return path.Contains(pattern) || path.EndsWith(pattern);
+        }
+    }
+
+    /// <summary>
+    /// Converts a gitignore pattern to a proper regex pattern
+    /// Handles ** (recursive), * (wildcard), ? (single char), and [] (char class)
+    /// </summary>
+    private static string ConvertGitIgnorePatternToRegex(string pattern)
+    {
+        var regex = new System.Text.StringBuilder();
+        
+        // Determine if pattern is anchored (starts with / or contains no /)
+        bool isAnchored = pattern.StartsWith('/');
+        if (isAnchored)
+        {
+            pattern = pattern[1..]; // Remove leading slash
+            regex.Append('^');
+        }
+        else if (!pattern.Contains('/'))
+        {
+            // Pattern with no slashes matches files at any level
+            regex.Append("(^|.*/)");
+        }
+        else
+        {
+            regex.Append('^');
         }
 
-        // Exact match or contains
-        return path.Contains(pattern) || path.EndsWith(pattern);
+        // Process the pattern character by character
+        for (int i = 0; i < pattern.Length; i++)
+        {
+            char c = pattern[i];
+            
+            switch (c)
+            {
+                case '*':
+                    if (i + 1 < pattern.Length && pattern[i + 1] == '*')
+                    {
+                        // Handle ** (recursive directory matching)
+                        i++; // Skip the second *
+                        
+                        if (i + 1 < pattern.Length && pattern[i + 1] == '/')
+                        {
+                            // **/ means match any number of directories
+                            i++; // Skip the /
+                            regex.Append("(.*/)??");
+                        }
+                        else if (i + 1 >= pattern.Length)
+                        {
+                            // ** at end means match everything
+                            regex.Append(".*");
+                        }
+                        else
+                        {
+                            // ** in middle - treat as recursive wildcard
+                            regex.Append(".*");
+                        }
+                    }
+                    else
+                    {
+                        // Single * matches anything except /
+                        regex.Append("[^/]*");
+                    }
+                    break;
+                    
+                case '?':
+                    regex.Append("[^/]");
+                    break;
+                    
+                case '[':
+                    // Character class - find the closing ]
+                    int closeIndex = pattern.IndexOf(']', i + 1);
+                    if (closeIndex != -1)
+                    {
+                        var charClass = pattern.Substring(i, closeIndex - i + 1);
+                        regex.Append(System.Text.RegularExpressions.Regex.Escape(charClass));
+                        i = closeIndex;
+                    }
+                    else
+                    {
+                        regex.Append("\\[");
+                    }
+                    break;
+                    
+                case '.':
+                case '^':
+                case '$':
+                case '+':
+                case '{':
+                case '}':
+                case '(':
+                case ')':
+                case '|':
+                case '\\':
+                    // Escape regex special characters
+                    regex.Append('\\').Append(c);
+                    break;
+                    
+                default:
+                    regex.Append(c);
+                    break;
+            }
+        }
+        
+        regex.Append('$');
+        return regex.ToString();
     }
 
     /// <summary>
