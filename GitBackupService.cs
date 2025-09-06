@@ -546,7 +546,7 @@ public class GitBackupService
 
         // Use producer-consumer pattern for immediate git object creation with inline exclusion filtering
         // This avoids reading files that will be excluded, maximizing efficiency
-        var fileQueue = new System.Collections.Concurrent.ConcurrentQueue<(string flatName, byte[] data)>();
+        var fileQueue = new System.Collections.Concurrent.ConcurrentQueue<(string relativePath, byte[] data)>();
         var producerFinished = false;
         var lockObj = new object();
         var readCount = 0;
@@ -575,15 +575,14 @@ public class GitBackupService
                         return;
                     }
                     
-                    // Create a flattened filename (replace path separators with underscores)
+                    // Get relative path to preserve directory structure
                     var relativePath = Path.GetRelativePath(sourcePath, file);
-                    var flatName = relativePath.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
                     
                     // Read file data only if not excluded
                     var data = File.ReadAllBytes(file);
                     
                     // Add to queue immediately - don't wait for all files
-                    fileQueue.Enqueue((flatName, data));
+                    fileQueue.Enqueue((relativePath, data));
                     
                     lock (lockObj)
                     {
@@ -618,7 +617,11 @@ public class GitBackupService
                 {
                     using var stream = new MemoryStream(fileData.data);
                     var blob = repo.ObjectDatabase.CreateBlob(stream);
-                    treeBuilder.Add(fileData.flatName, blob, Mode.NonExecutableFile);
+                    
+                    // Use relative path to preserve directory structure
+                    // Convert backslashes to forward slashes for git compatibility
+                    var gitPath = fileData.relativePath.Replace('\\', '/');
+                    treeBuilder.Add(gitPath, blob, Mode.NonExecutableFile);
                     
                     lock (lockObj)
                     {
@@ -633,7 +636,7 @@ public class GitBackupService
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Warning: Failed to create git object for {fileData.flatName}: {ex.Message}");
+                    Console.WriteLine($"Warning: Failed to create git object for {fileData.relativePath}: {ex.Message}");
                 }
             }
             else
