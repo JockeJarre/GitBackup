@@ -61,26 +61,44 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       working-directory: ${{ github.workspace }}
       run: |
+        echo "=== Running GitBackup Tests on Ubuntu ==="
+        echo "GitBackup executable: dotnet bin/Release/net8.0/GitBackup.dll"
+        echo "Working directory: $(pwd)"
+        echo "Files in bin/Release/net8.0/:"
+        ls -la bin/Release/net8.0/ || true
+        echo "=== Starting Robot Framework Tests ==="
         python -m robot \
           --outputdir test_results_linux \
           --timestampoutputs \
           --reporttitle "GitBackup Tests - Linux" \
           --logtitle "GitBackup Test Log - Linux" \
           --variable GITBACKUP_EXE:"dotnet bin/Release/net8.0/GitBackup.dll" \
-          tests/gitbackup_tests.robot tests/linux_tests.robot
+          tests/gitbackup_tests.robot tests/linux_tests.robot \
+        || echo "=== Tests completed with exit code $? ==="
           
     - name: Run Robot Framework Tests (Windows)
       if: matrix.os == 'windows-latest'
       shell: pwsh
       working-directory: ${{ github.workspace }}
       run: |
-        python -m robot `
-          --outputdir test_results_windows `
-          --timestampoutputs `
-          --reporttitle "GitBackup Tests - Windows" `
-          --logtitle "GitBackup Test Log - Windows" `
-          --variable GITBACKUP_EXE:bin/Release/net8.0/GitBackup.exe `
-          tests/gitbackup_tests.robot tests/windows_tests.robot
+        Write-Host "=== Running GitBackup Tests on Windows ==="
+        Write-Host "GitBackup executable: bin/Release/net8.0/GitBackup.exe"
+        Write-Host "Working directory: $(Get-Location)"
+        Write-Host "Files in bin/Release/net8.0/:"
+        Get-ChildItem bin/Release/net8.0/ -ErrorAction SilentlyContinue
+        Write-Host "=== Starting Robot Framework Tests ==="
+        try {
+          python -m robot `
+            --outputdir test_results_windows `
+            --timestampoutputs `
+            --reporttitle "GitBackup Tests - Windows" `
+            --logtitle "GitBackup Test Log - Windows" `
+            --variable GITBACKUP_EXE:bin/Release/net8.0/GitBackup.exe `
+            tests/gitbackup_tests.robot tests/windows_tests.robot
+        } catch {
+          Write-Host "=== Tests completed with error: $_ ==="
+          throw
+        }
           
     - name: Upload Test Results (Linux)
       if: matrix.os == 'ubuntu-latest' && always()
@@ -90,6 +108,21 @@ jobs:
         path: test_results_linux/
         retention-days: 30
         
+    - name: Create Test Summary (Linux)
+      if: matrix.os == 'ubuntu-latest' && always()
+      run: |
+        echo "## 🐧 Linux Test Results" >> $GITHUB_STEP_SUMMARY
+        if [ -f "test_results_linux/report.html" ]; then
+          echo "✅ Robot Framework tests completed" >> $GITHUB_STEP_SUMMARY
+          if [ -f "test_results_linux/output.xml" ]; then
+            # Extract test statistics if available
+            echo "### Test Statistics:" >> $GITHUB_STEP_SUMMARY
+            grep -o "test.*passed.*failed" test_results_linux/output.xml | head -1 >> $GITHUB_STEP_SUMMARY || echo "Statistics not available" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "❌ Robot Framework tests failed to generate report" >> $GITHUB_STEP_SUMMARY
+        fi
+        
     - name: Upload Test Results (Windows)
       if: matrix.os == 'windows-latest' && always()
       uses: actions/upload-artifact@v4
@@ -97,6 +130,26 @@ jobs:
         name: test-results-windows  
         path: test_results_windows/
         retention-days: 30
+        
+    - name: Create Test Summary (Windows)
+      if: matrix.os == 'windows-latest' && always()
+      shell: pwsh
+      run: |
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## 🪟 Windows Test Results"
+        if (Test-Path "test_results_windows/report.html") {
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "✅ Robot Framework tests completed"
+          if (Test-Path "test_results_windows/output.xml") {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Test Statistics:"
+            try {
+              $stats = Select-String -Path "test_results_windows/output.xml" -Pattern "test.*passed.*failed" | Select-Object -First 1
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $stats.Line
+            } catch {
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Statistics not available"
+            }
+          }
+        } else {
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "❌ Robot Framework tests failed to generate report"
+        }
 
   build:
     needs: test
