@@ -57,26 +57,24 @@ jobs:
     - name: Run Robot Framework Tests (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: |
-        export PATH="$PWD/bin/Release/net8.0:$PATH"
         python -m robot \
           --outputdir test_results_linux \
           --timestampoutputs \
           --reporttitle "GitBackup Tests - Linux" \
           --logtitle "GitBackup Test Log - Linux" \
-          --variable GITBACKUP_EXE:./bin/Release/net8.0/GitBackup \
+          --variable GITBACKUP_EXE:$PWD/bin/Release/net8.0/GitBackup \
           tests/gitbackup_tests.robot tests/linux_tests.robot
           
     - name: Run Robot Framework Tests (Windows)
       if: matrix.os == 'windows-latest'
       shell: pwsh
       run: |
-        $env:PATH = "$pwd/bin/Release/net8.0;$env:PATH"
         python -m robot `
           --outputdir test_results_windows `
           --timestampoutputs `
           --reporttitle "GitBackup Tests - Windows" `
           --logtitle "GitBackup Test Log - Windows" `
-          --variable GITBACKUP_EXE:./bin/Release/net8.0/GitBackup.exe `
+          --variable GITBACKUP_EXE:$PWD/bin/Release/net8.0/GitBackup.exe `
           tests/gitbackup_tests.robot tests/windows_tests.robot
           
     - name: Upload Test Results (Linux)
