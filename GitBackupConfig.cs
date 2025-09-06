@@ -31,6 +31,11 @@ public class GitBackupConfig
     public List<string> ExcludePatterns { get; set; } = new();
 
     /// <summary>
+    /// Whether to create a bare repository (no working directory files)
+    /// </summary>
+    public bool BareRepository { get; set; } = false;
+
+    /// <summary>
     /// Validates the configuration
     /// </summary>
     public void Validate()

@@ -26,7 +26,8 @@ public class ConfigurationLoader
             RootDir = configuration["GitBackup:RootDir"] ?? string.Empty,
             BackupDir = configuration["GitBackup:BackupDir"] ?? string.Empty,
             GitUserName = configuration["GitBackup:GitUserName"] ?? "GitBackup",
-            GitUserEmail = configuration["GitBackup:GitUserEmail"] ?? "gitbackup@localhost"
+            GitUserEmail = configuration["GitBackup:GitUserEmail"] ?? "gitbackup@localhost",
+            BareRepository = bool.Parse(configuration["GitBackup:BareRepository"] ?? "false")
         };
 
         // Load exclude patterns
@@ -71,6 +72,10 @@ public class ConfigurationLoader
             # Git commit author information
             GitUserName=GitBackup
             GitUserEmail=gitbackup@localhost
+            
+            # Create bare repository (true) or repository with working files (false)
+            # Bare repositories store only git history without copying files to backup directory
+            BareRepository=false
             
             # Files and patterns to exclude from backup
             Exclude:0=.git/
