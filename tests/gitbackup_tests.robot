@@ -1,19 +1,9 @@
 *** Settings ***
 Documentation     GitBackup Application Tests
-Library           OperatingSystem
-Library           Process
-Library           Collections
-Library           String
+Resource          gitbackup_keywords.robot
 Suite Setup       Setup Test Environment
 Suite Teardown    Cleanup Test Environment
 Test Timeout      30 seconds
-
-*** Variables ***
-${GITBACKUP_EXE}        gitbackup
-${TEST_ROOT_DIR}        ${CURDIR}${/}test_data${/}source
-${TEST_BACKUP_DIR}      ${CURDIR}${/}test_data${/}backup
-${TEST_CONFIG_FILE}     ${CURDIR}${/}test_data${/}test_config.ini
-${SAMPLE_CONFIG}        ${CURDIR}${/}test_data${/}sample_config.ini
 
 *** Test Cases ***
 GitBackup Should Display Help
@@ -120,76 +110,3 @@ GitBackup Should Handle Verbose Mode
     Should Contain    ${result.stdout}    Git User:
     Should Contain    ${result.stdout}    Exclude patterns:
     [Teardown]    Cleanup Valid Test Environment
-
-*** Keywords ***
-Setup Test Environment
-    [Documentation]    Initialize test environment
-    Log    Setting up test environment
-    Create Directory    ${CURDIR}${/}test_data
-    Set Suite Variable    ${TEST_TIMEOUT}    30s
-    
-Cleanup Test Environment
-    [Documentation]    Clean up test environment
-    Log    Cleaning up test environment
-    Remove Directory    ${CURDIR}${/}test_data    recursive=True
-    
-Setup Valid Test Environment
-    [Documentation]    Setup a valid test environment with directories and config
-    Create Directory    ${TEST_ROOT_DIR}
-    Create Directory    ${TEST_BACKUP_DIR}
-    Create Valid Config File
-
-Cleanup Valid Test Environment
-    [Documentation]    Clean up valid test environment
-    Remove Directory    ${TEST_ROOT_DIR}    recursive=True
-    Remove Directory    ${TEST_BACKUP_DIR}    recursive=True
-    Remove File    ${TEST_CONFIG_FILE}
-
-Create Valid Config File
-    [Documentation]    Create a valid configuration file for testing
-    ${config_content} =    Catenate    SEPARATOR=\n
-    ...    [GitBackup]
-    ...    RootDir=${TEST_ROOT_DIR}
-    ...    BackupDir=${TEST_BACKUP_DIR}
-    ...    GitUserName=GitBackup Test
-    ...    GitUserEmail=test@gitbackup.local
-    ...    Exclude:0=*.tmp
-    ...    Exclude:1=*.log
-    ...    Exclude:2=.git/
-    Create File    ${TEST_CONFIG_FILE}    ${config_content}
-
-Create Invalid Config File
-    [Documentation]    Create an invalid configuration file for testing
-    ${config_content} =    Catenate    SEPARATOR=\n
-    ...    [GitBackup]
-    ...    RootDir=
-    ...    BackupDir=
-    Create File    ${TEST_CONFIG_FILE}    ${config_content}
-
-Create Test Files
-    [Documentation]    Create sample files in the test root directory
-    Create File    ${TEST_ROOT_DIR}${/}file1.txt    Test content for file 1
-    Create File    ${TEST_ROOT_DIR}${/}file2.txt    Test content for file 2
-    Create Directory    ${TEST_ROOT_DIR}${/}subdir
-    Create File    ${TEST_ROOT_DIR}${/}subdir${/}file3.txt    Test content for file 3
-    Create File    ${TEST_ROOT_DIR}${/}should_exclude.tmp    This should be excluded
-    Create File    ${TEST_ROOT_DIR}${/}app.log    This log should be excluded
-
-Run GitBackup
-    [Documentation]    Run GitBackup with specified arguments
-    [Arguments]    @{args}
-    ${result} =    Run Process    ${GITBACKUP_EXE}    @{args}    shell=True    timeout=${TEST_TIMEOUT}
-    Log    Command: ${GITBACKUP_EXE} ${args}
-    Log    Return Code: ${result.rc}
-    Log    STDOUT: ${result.stdout}
-    Log    STDERR: ${result.stderr}
-    RETURN    ${result}
-
-Should Contain Any
-    [Documentation]    Check if text contains any of the given strings
-    [Arguments]    ${text}    @{expected_strings}
-    FOR    ${expected}    IN    @{expected_strings}
-        ${contains} =    Run Keyword And Return Status    Should Contain    ${text}    ${expected}
-        IF    ${contains}    BREAK
-    END
-    Should Be True    ${contains}    Text should contain one of: ${expected_strings}

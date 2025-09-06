@@ -1,6 +1,6 @@
 *** Settings ***
 Documentation     Platform-specific tests for GitBackup on Windows
-Resource          gitbackup_tests.robot
+Resource          gitbackup_keywords.robot
 Suite Setup       Setup Windows Test Environment
 Suite Teardown    Cleanup Test Environment
 Test Timeout      30 seconds
