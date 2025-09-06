@@ -175,24 +175,30 @@ jobs:
         echo "Build number: $BUILD_NUMBER"
         
     - name: Restore dependencies
-      run: dotnet restore
+      working-directory: ${{ github.workspace }}
+      run: dotnet restore GitBackup.csproj
       
     - name: Build
+      working-directory: ${{ github.workspace }}
+      shell: bash
       run: |
-        dotnet build --no-restore --configuration Release \
+        dotnet build GitBackup.csproj --no-restore --configuration Release \
           -p:VersionPrefix=1.0.0 \
           -p:VersionSuffix="" \
           -p:BuildNumber=${{ steps.build_number.outputs.BUILD_NUMBER }} \
           -p:AssemblyVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }} \
           -p:FileVersion=1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}
           
-    - name: Test
-      run: dotnet test --no-build --verbosity normal --configuration Release
-      continue-on-error: true
+    # Skip unit tests since we use Robot Framework for testing
+    # - name: Test
+    #   run: dotnet test --no-build --verbosity normal --configuration Release
+    #   continue-on-error: true
       
     - name: Publish Windows x64
+      working-directory: ${{ github.workspace }}
+      shell: bash
       run: |
-        dotnet publish --configuration Release --runtime win-x64 --self-contained false \
+        dotnet publish GitBackup.csproj --configuration Release --runtime win-x64 --self-contained false \
           -p:VersionPrefix=1.0.0 \
           -p:VersionSuffix="" \
           -p:BuildNumber=${{ steps.build_number.outputs.BUILD_NUMBER }} \
@@ -201,8 +207,10 @@ jobs:
           --output ./publish/win-x64/
           
     - name: Publish Linux x64
+      working-directory: ${{ github.workspace }}
+      shell: bash
       run: |
-        dotnet publish --configuration Release --runtime linux-x64 --self-contained false \
+        dotnet publish GitBackup.csproj --configuration Release --runtime linux-x64 --self-contained false \
           -p:VersionPrefix=1.0.0 \
           -p:VersionSuffix="" \
           -p:BuildNumber=${{ steps.build_number.outputs.BUILD_NUMBER }} \
@@ -211,7 +219,9 @@ jobs:
           --output ./publish/linux-x64/
           
     - name: Create version info
+      working-directory: ${{ github.workspace }}
       run: |
+        mkdir -p ./publish
         echo "GitBackup v1.0.0.${{ steps.build_number.outputs.BUILD_NUMBER }}" > ./publish/VERSION.txt
         echo "Build: ${{ github.run_number }}" >> ./publish/VERSION.txt
         echo "Commit: ${{ github.sha }}" >> ./publish/VERSION.txt
