@@ -23,29 +23,12 @@ public class GitBackupService
         try
         {
             Console.WriteLine($"Starting backup from '{_config.RootDir}' to '{_config.BackupDir}'");
-            Console.WriteLine($"Backup method: {_config.BackupMethod ?? "bare"}");
 
             // Ensure backup directory exists
             Directory.CreateDirectory(_config.BackupDir);
 
-            // Select backup method based on configuration
-            var method = _config.BackupMethod?.ToLowerInvariant() ?? "bare";
-            switch (method)
-            {
-                case "bare":
-                    await BackupToBareRepositoryAsync();
-                    break;
-                case "standard":
-                    await BackupToStandardRepositoryAsync();
-                    break;
-                case "index":
-                    await BackupWithGitIndexAsync();
-                    break;
-                default:
-                    Console.WriteLine($"Unknown backup method '{_config.BackupMethod}', using bare repository");
-                    await BackupToBareRepositoryAsync();
-                    break;
-            }
+            // Use the optimized git index approach (like original gitbackup.cmd)
+            await BackupWithGitIndexAsync();
         }
         catch (Exception ex)
         {
@@ -54,8 +37,8 @@ public class GitBackupService
     }
 
     /// <summary>
-    /// Backs up using git index approach (similar to original gitbackup.cmd)
-    /// Repository is in backup directory, but git operations work directly on source files
+    /// Performs the backup using optimized git operations directly on source files.
+    /// This approach mimics the original gitbackup.cmd efficiency by eliminating file copying.
     /// </summary>
     private Task BackupWithGitIndexAsync()
     {

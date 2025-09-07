@@ -31,12 +31,6 @@ public class GitBackupConfig
     public List<string> ExcludePatterns { get; set; } = new();
 
     /// <summary>
-    /// Whether to create a bare repository (no working directory files)
-    /// Default is true for space-efficient backups
-    /// </summary>
-    public bool BareRepository { get; set; } = true;
-
-    /// <summary>
     /// Maximum file size in bytes to include in backup (0 = no limit)
     /// </summary>
     public long MaxFileSizeBytes { get; set; } = 0;
@@ -51,14 +45,6 @@ public class GitBackupConfig
     /// Default is false (include all files)
     /// </summary>
     public bool ExcludeBinaryFiles { get; set; } = false;
-
-    /// <summary>
-    /// Backup method to use: "bare", "standard", or "index"
-    /// - bare: Efficient git objects creation (default)
-    /// - standard: Copy files then commit (legacy)
-    /// - index: Git index approach like original gitbackup.cmd
-    /// </summary>
-    public string BackupMethod { get; set; } = "bare";
 
     /// <summary>
     /// Validates the configuration
