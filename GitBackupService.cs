@@ -220,7 +220,7 @@ public class GitBackupService
                 RelativePath = Path.GetRelativePath(sourceDir, file.FullName),
                 DestPath = Path.Combine(destDir, Path.GetRelativePath(sourceDir, file.FullName))
             })
-            .Where(item => !ShouldExcludeFile(item.RelativePath))
+            .Where(item => !ShouldExcludeFileWithSizeCheck(item.SourceFile.FullName))
             .Select(item => new
             {
                 item.SourceFile,
@@ -321,6 +321,47 @@ public class GitBackupService
         }
 
         return isExcluded;
+    }
+
+    /// <summary>
+    /// Checks if a file should be excluded based on patterns and file size limits
+    /// </summary>
+    private bool ShouldExcludeFileWithSizeCheck(string filePath)
+    {
+        var relativePath = Path.GetRelativePath(_config.RootDir, filePath);
+        
+        // First check pattern-based exclusions
+        if (ShouldExcludeFile(relativePath))
+            return true;
+
+        // Check file size limits if configured
+        if (_config.MaxFileSizeBytes > 0 || _config.MinFileSizeBytes > 0)
+        {
+            try
+            {
+                var fileInfo = new FileInfo(filePath);
+                var fileSize = fileInfo.Length;
+
+                // Check maximum file size limit
+                if (_config.MaxFileSizeBytes > 0 && fileSize > _config.MaxFileSizeBytes)
+                {
+                    return true; // Exclude: file too large
+                }
+
+                // Check minimum file size limit  
+                if (_config.MinFileSizeBytes > 0 && fileSize < _config.MinFileSizeBytes)
+                {
+                    return true; // Exclude: file too small
+                }
+            }
+            catch (Exception ex)
+            {
+                // If we can't get file info, include the file (don't exclude due to errors)
+                Console.WriteLine($"Warning: Could not check size for {filePath}: {ex.Message}");
+            }
+        }
+
+        return false; // Include the file
     }
 
     /// <summary>
@@ -565,8 +606,8 @@ public class GitBackupService
             {
                 try
                 {
-                    // Check exclusion first - avoid reading excluded files
-                    if (ShouldExcludeFile(file))
+                    // Check exclusion first - avoid reading excluded files (includes size filtering)
+                    if (ShouldExcludeFileWithSizeCheck(file))
                     {
                         lock (lockObj)
                         {

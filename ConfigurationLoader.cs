@@ -59,6 +59,19 @@ public class ConfigurationLoader
             else
                 config.BareRepository = true; // Default value
 
+            // Handle file size filtering
+            var maxFileSizeValue = configParser.GetValue("GitBackup", "MaxFileSize");
+            if (!string.IsNullOrEmpty(maxFileSizeValue))
+            {
+                config.MaxFileSizeBytes = ParseFileSizeToBytes(maxFileSizeValue);
+            }
+
+            var minFileSizeValue = configParser.GetValue("GitBackup", "MinFileSize");
+            if (!string.IsNullOrEmpty(minFileSizeValue))
+            {
+                config.MinFileSizeBytes = ParseFileSizeToBytes(minFileSizeValue);
+            }
+
             // Check if basic configuration was loaded successfully
             if (string.IsNullOrEmpty(config.RootDir))
             {
@@ -108,6 +121,19 @@ public class ConfigurationLoader
             GitUserEmail = configuration["GitBackup:GitUserEmail"] ?? "gitbackup@localhost",
             BareRepository = bool.Parse(configuration["GitBackup:BareRepository"] ?? "true")
         };
+
+        // Handle file size filtering
+        var maxFileSizeValue = configuration["GitBackup:MaxFileSize"];
+        if (!string.IsNullOrEmpty(maxFileSizeValue))
+        {
+            config.MaxFileSizeBytes = ParseFileSizeToBytes(maxFileSizeValue);
+        }
+
+        var minFileSizeValue = configuration["GitBackup:MinFileSize"];
+        if (!string.IsNullOrEmpty(minFileSizeValue))
+        {
+            config.MinFileSizeBytes = ParseFileSizeToBytes(minFileSizeValue);
+        }
 
         // Load exclude patterns - support multiple formats
         config.ExcludePatterns = LoadExcludePatterns(configuration);
@@ -266,6 +292,14 @@ public class ConfigurationLoader
             # Default: true (space-efficient, git history only)
             BareRepository=true
             
+            # File size filtering (optional)
+            # Maximum file size to include in backup (0 = no limit)
+            # Supports units: B, KB, MB, GB, TB
+            # MaxFileSize=100MB
+            
+            # Minimum file size to include in backup (0 = no limit)  
+            # MinFileSize=1KB
+            
             # Files and patterns to exclude from backup
             # Comma-separated format (recommended):
             Exclude=.git/,*.tmp,*.temp,*.log,Thumbs.db,.DS_Store,node_modules/,bin/,obj/
@@ -279,5 +313,52 @@ public class ConfigurationLoader
 
         File.WriteAllText(iniFilePath, sampleConfig);
         Console.WriteLine($"Sample configuration file created: {iniFilePath}");
+    }
+
+    /// <summary>
+    /// Parses file size string to bytes, supporting units like KB, MB, GB
+    /// </summary>
+    /// <param name="sizeString">Size string like "10MB", "500KB", "1.5GB", or "1024" (bytes)</param>
+    /// <returns>Size in bytes</returns>
+    private static long ParseFileSizeToBytes(string sizeString)
+    {
+        if (string.IsNullOrWhiteSpace(sizeString))
+            return 0;
+
+        sizeString = sizeString.Trim().ToUpperInvariant();
+
+        // Extract number and unit
+        var numberPart = "";
+        var unitPart = "";
+        
+        for (int i = 0; i < sizeString.Length; i++)
+        {
+            if (char.IsDigit(sizeString[i]) || sizeString[i] == '.')
+            {
+                numberPart += sizeString[i];
+            }
+            else
+            {
+                unitPart = sizeString.Substring(i);
+                break;
+            }
+        }
+
+        if (!double.TryParse(numberPart, out double number))
+        {
+            throw new ArgumentException($"Invalid file size format: {sizeString}");
+        }
+
+        // Convert based on unit
+        return unitPart switch
+        {
+            "" => (long)number,                    // No unit = bytes
+            "B" => (long)number,                   // Bytes
+            "KB" => (long)(number * 1024),         // Kilobytes
+            "MB" => (long)(number * 1024 * 1024),  // Megabytes
+            "GB" => (long)(number * 1024 * 1024 * 1024), // Gigabytes
+            "TB" => (long)(number * 1024 * 1024 * 1024 * 1024), // Terabytes
+            _ => throw new ArgumentException($"Unsupported file size unit: {unitPart}")
+        };
     }
 }

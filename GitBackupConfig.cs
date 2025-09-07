@@ -37,6 +37,16 @@ public class GitBackupConfig
     public bool BareRepository { get; set; } = true;
 
     /// <summary>
+    /// Maximum file size in bytes to include in backup (0 = no limit)
+    /// </summary>
+    public long MaxFileSizeBytes { get; set; } = 0;
+
+    /// <summary>
+    /// Minimum file size in bytes to include in backup (0 = no limit)
+    /// </summary>
+    public long MinFileSizeBytes { get; set; } = 0;
+
+    /// <summary>
     /// Validates the configuration
     /// </summary>
     public void Validate()
