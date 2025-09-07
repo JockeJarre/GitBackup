@@ -53,6 +53,14 @@ public class GitBackupConfig
     public bool ExcludeBinaryFiles { get; set; } = false;
 
     /// <summary>
+    /// Backup method to use: "bare", "standard", or "index"
+    /// - bare: Efficient git objects creation (default)
+    /// - standard: Copy files then commit (legacy)
+    /// - index: Git index approach like original gitbackup.cmd
+    /// </summary>
+    public string BackupMethod { get; set; } = "bare";
+
+    /// <summary>
     /// Validates the configuration
     /// </summary>
     public void Validate()
