@@ -188,7 +188,7 @@ public class ConfigurationLoader
             """;
             
         File.WriteAllText(iniFilePath, sampleConfig);
-        Console.WriteLine($"Sample configuration created: {iniFilePath}");
+        Console.WriteLine($"Sample configuration file created: {iniFilePath}");
     }
 
     /// <summary>
