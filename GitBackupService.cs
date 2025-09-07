@@ -23,24 +23,124 @@ public class GitBackupService
         try
         {
             Console.WriteLine($"Starting backup from '{_config.RootDir}' to '{_config.BackupDir}'");
-            Console.WriteLine($"Repository type: {(_config.BareRepository ? "Bare" : "Standard")}");
+            Console.WriteLine($"Backup method: {_config.BackupMethod ?? "bare"}");
 
             // Ensure backup directory exists
             Directory.CreateDirectory(_config.BackupDir);
 
-            if (_config.BareRepository)
+            // Select backup method based on configuration
+            var method = _config.BackupMethod?.ToLowerInvariant() ?? "bare";
+            switch (method)
             {
-                await BackupToBareRepositoryAsync();
-            }
-            else
-            {
-                await BackupToStandardRepositoryAsync();
+                case "bare":
+                    await BackupToBareRepositoryAsync();
+                    break;
+                case "standard":
+                    await BackupToStandardRepositoryAsync();
+                    break;
+                case "index":
+                    await BackupWithGitIndexAsync();
+                    break;
+                default:
+                    Console.WriteLine($"Unknown backup method '{_config.BackupMethod}', using bare repository");
+                    await BackupToBareRepositoryAsync();
+                    break;
             }
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException($"Backup failed: {ex.Message}", ex);
         }
+    }
+
+    /// <summary>
+    /// Backs up using git index approach (similar to original gitbackup.cmd)
+    /// Repository is in backup directory, but git operations work directly on source files
+    /// </summary>
+    private Task BackupWithGitIndexAsync()
+    {
+        var repoPath = _config.BackupDir;
+        Repository repo;
+
+        if (!Repository.IsValid(repoPath))
+        {
+            Console.WriteLine("Initializing new git repository for index-based backup...");
+            repo = new Repository(Repository.Init(repoPath, isBare: false));
+        }
+        else
+        {
+            repo = new Repository(repoPath);
+        }
+
+        try
+        {
+            Console.WriteLine("Using git index approach (no file copying, direct source access)...");
+            
+            // This mimics: GIT_DIR=backup_dir git -C source_dir add -A
+            // We'll manually add files from source directory to the index
+            
+            var index = repo.Index;
+            var sourceFiles = Directory.GetFiles(_config.RootDir, "*", SearchOption.AllDirectories);
+            Console.WriteLine($"Found {sourceFiles.Length} files to evaluate...");
+
+            int addedCount = 0;
+            int excludedCount = 0;
+
+            foreach (var filePath in sourceFiles)
+            {
+                if (ShouldExcludeFileWithSizeCheck(filePath))
+                {
+                    excludedCount++;
+                    continue;
+                }
+
+                var relativePath = Path.GetRelativePath(_config.RootDir, filePath);
+                var gitPath = relativePath.Replace('\\', '/');
+
+                try
+                {
+                    // Create blob from file content and add to index
+                    var fileBytes = File.ReadAllBytes(filePath);
+                    using var stream = new MemoryStream(fileBytes);
+                    var blob = repo.ObjectDatabase.CreateBlob(stream);
+                    index.Add(blob, gitPath, Mode.NonExecutableFile);
+                    addedCount++;
+
+                    if (addedCount % 100 == 0)
+                    {
+                        Console.WriteLine($"Indexed {addedCount} files...");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not index {relativePath}: {ex.Message}");
+                }
+            }
+
+            Console.WriteLine($"Indexed {addedCount} files, excluded {excludedCount} files");
+
+            // Check if there are changes
+            var status = repo.RetrieveStatus();
+            if (!status.Any())
+            {
+                Console.WriteLine("No changes detected. Backup is up to date.");
+                return Task.CompletedTask;
+            }
+
+            // Commit the changes
+            var signature = new Signature(_config.GitUserName, _config.GitUserEmail, DateTimeOffset.Now);
+            var commitMessage = $"Backup created at {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+
+            var commit = repo.Commit(commitMessage, signature, signature);
+            Console.WriteLine($"Backup committed with hash: {commit.Sha[..8]}");
+            Console.WriteLine($"Changes committed: {addedCount} files");
+        }
+        finally
+        {
+            repo?.Dispose();
+        }
+        
+        return Task.CompletedTask;
     }
 
     /// <summary>

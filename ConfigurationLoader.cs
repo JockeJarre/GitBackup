@@ -60,13 +60,13 @@ public class ConfigurationLoader
                 config.BareRepository = true; // Default value
 
             // Handle file size filtering
-            var maxFileSizeValue = configParser.GetValue("GitBackup", "MaxFileSize");
+            var maxFileSizeValue = configParser.GetValue("GitBackup", "MaxFileSizeBytes");
             if (!string.IsNullOrEmpty(maxFileSizeValue))
             {
                 config.MaxFileSizeBytes = ParseFileSizeToBytes(maxFileSizeValue);
             }
 
-            var minFileSizeValue = configParser.GetValue("GitBackup", "MinFileSize");
+            var minFileSizeValue = configParser.GetValue("GitBackup", "MinFileSizeBytes");
             if (!string.IsNullOrEmpty(minFileSizeValue))
             {
                 config.MinFileSizeBytes = ParseFileSizeToBytes(minFileSizeValue);
@@ -78,6 +78,17 @@ public class ConfigurationLoader
                 config.ExcludeBinaryFiles = excludeBinary;
             else
                 config.ExcludeBinaryFiles = false; // Default value
+
+            // Handle backup method selection
+            var backupMethodValue = configParser.GetValue("GitBackup", "BackupMethod");
+            if (!string.IsNullOrEmpty(backupMethodValue))
+            {
+                var method = backupMethodValue.ToLowerInvariant();
+                if (method == "bare" || method == "standard" || method == "index")
+                    config.BackupMethod = method;
+                else
+                    config.BackupMethod = "bare"; // Default fallback
+            }
 
             // Check if basic configuration was loaded successfully
             if (string.IsNullOrEmpty(config.RootDir))
@@ -148,6 +159,17 @@ public class ConfigurationLoader
             config.ExcludeBinaryFiles = excludeBinary;
         else
             config.ExcludeBinaryFiles = false; // Default value
+
+        // Handle backup method selection
+        var backupMethodValue = configuration["GitBackup:BackupMethod"];
+        if (!string.IsNullOrEmpty(backupMethodValue))
+        {
+            var method = backupMethodValue.ToLowerInvariant();
+            if (method == "bare" || method == "standard" || method == "index")
+                config.BackupMethod = method;
+            else
+                config.BackupMethod = "bare"; // Default fallback
+        }
 
         // Load exclude patterns - support multiple formats
         config.ExcludePatterns = LoadExcludePatterns(configuration);
