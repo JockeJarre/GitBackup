@@ -47,6 +47,12 @@ public class GitBackupConfig
     public long MinFileSizeBytes { get; set; } = 0;
 
     /// <summary>
+    /// Whether to exclude binary files (only include text files)
+    /// Default is false (include all files)
+    /// </summary>
+    public bool ExcludeBinaryFiles { get; set; } = false;
+
+    /// <summary>
     /// Validates the configuration
     /// </summary>
     public void Validate()

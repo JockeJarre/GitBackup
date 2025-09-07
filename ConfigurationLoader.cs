@@ -72,6 +72,13 @@ public class ConfigurationLoader
                 config.MinFileSizeBytes = ParseFileSizeToBytes(minFileSizeValue);
             }
 
+            // Handle binary file exclusion
+            var excludeBinaryValue = configParser.GetValue("GitBackup", "ExcludeBinaryFiles");
+            if (bool.TryParse(excludeBinaryValue, out bool excludeBinary))
+                config.ExcludeBinaryFiles = excludeBinary;
+            else
+                config.ExcludeBinaryFiles = false; // Default value
+
             // Check if basic configuration was loaded successfully
             if (string.IsNullOrEmpty(config.RootDir))
             {
@@ -134,6 +141,13 @@ public class ConfigurationLoader
         {
             config.MinFileSizeBytes = ParseFileSizeToBytes(minFileSizeValue);
         }
+
+        // Handle binary file exclusion
+        var excludeBinaryValue = configuration["GitBackup:ExcludeBinaryFiles"];
+        if (bool.TryParse(excludeBinaryValue, out bool excludeBinary))
+            config.ExcludeBinaryFiles = excludeBinary;
+        else
+            config.ExcludeBinaryFiles = false; // Default value
 
         // Load exclude patterns - support multiple formats
         config.ExcludePatterns = LoadExcludePatterns(configuration);
@@ -299,6 +313,11 @@ public class ConfigurationLoader
             
             # Minimum file size to include in backup (0 = no limit)  
             # MinFileSize=1KB
+            
+            # Binary file exclusion (optional)
+            # Exclude binary files and only backup text files
+            # Default: false (include all files)
+            # ExcludeBinaryFiles=true
             
             # Files and patterns to exclude from backup
             # Comma-separated format (recommended):

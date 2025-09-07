@@ -361,7 +361,77 @@ public class GitBackupService
             }
         }
 
+        // Check binary file exclusion if configured
+        if (_config.ExcludeBinaryFiles && IsBinaryFile(filePath))
+        {
+            return true; // Exclude: binary file
+        }
+
         return false; // Include the file
+    }
+
+    /// <summary>
+    /// Checks if a file contains binary data by reading the first few bytes
+    /// </summary>
+    /// <param name="filePath">Path to the file to check</param>
+    /// <returns>True if the file appears to be binary, false if it appears to be text</returns>
+    private bool IsBinaryFile(string filePath)
+    {
+        try
+        {
+            // Read the first 8KB or the entire file if smaller
+            const int bufferSize = 8192;
+            using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            
+            var buffer = new byte[Math.Min(bufferSize, fileStream.Length)];
+            var bytesRead = fileStream.Read(buffer, 0, buffer.Length);
+            
+            if (bytesRead == 0)
+                return false; // Empty file is considered text
+                
+            // Check for null bytes - common indicator of binary files
+            for (int i = 0; i < bytesRead; i++)
+            {
+                if (buffer[i] == 0)
+                    return true; // Contains null byte, likely binary
+            }
+            
+            // Check for high percentage of non-printable characters
+            int nonPrintableCount = 0;
+            int controlCharCount = 0;
+            
+            for (int i = 0; i < bytesRead; i++)
+            {
+                var b = buffer[i];
+                
+                // Count control characters (excluding common text ones)
+                if (b < 32 && b != 9 && b != 10 && b != 13) // Tab, LF, CR are OK
+                {
+                    controlCharCount++;
+                }
+                
+                // Count non-printable characters
+                if (b < 32 || b > 126)
+                {
+                    // Allow common text characters: tab, LF, CR, and extended ASCII
+                    if (b != 9 && b != 10 && b != 13 && b < 128)
+                    {
+                        nonPrintableCount++;
+                    }
+                }
+            }
+            
+            // If more than 30% non-printable or more than 1% control chars, consider binary
+            double nonPrintableRatio = (double)nonPrintableCount / bytesRead;
+            double controlRatio = (double)controlCharCount / bytesRead;
+            
+            return nonPrintableRatio > 0.30 || controlRatio > 0.01;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Could not check binary status for {filePath}: {ex.Message}");
+            return false; // If we can't read it, assume text (fail-safe)
+        }
     }
 
     /// <summary>
