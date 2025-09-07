@@ -253,6 +253,10 @@ class Program
     {
         try
         {
+            // Note: GitBackup uses bare repositories for efficiency (no file copying).
+            // This means some git commands like 'status' may show unexpected results.
+            // The backup data is stored correctly in git objects.
+            
             var processStartInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "git",

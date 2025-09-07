@@ -27,8 +27,8 @@ public class GitBackupService
             // Ensure backup directory exists
             Directory.CreateDirectory(_config.BackupDir);
 
-            // Use the optimized git index approach (like original gitbackup.cmd)
-            await BackupWithGitIndexAsync();
+            // Use the optimized bare repository approach (no file copying)
+            await BackupToBareRepositoryAsync();
         }
         catch (Exception ex)
         {
@@ -57,7 +57,7 @@ public class GitBackupService
 
         try
         {
-            Console.WriteLine("Using git index approach (no file copying, direct source access)...");
+            Console.WriteLine("Using optimized bare repository approach (no file copying)...");
             
             // This mimics: GIT_DIR=backup_dir git -C source_dir add -A
             // We'll manually add files from source directory to the index
@@ -82,21 +82,29 @@ public class GitBackupService
 
                 try
                 {
-                    // Create blob from file content and add to index
-                    var fileBytes = File.ReadAllBytes(filePath);
-                    using var stream = new MemoryStream(fileBytes);
-                    var blob = repo.ObjectDatabase.CreateBlob(stream);
-                    index.Add(blob, gitPath, Mode.NonExecutableFile);
+                    // Create the directory structure in the backup working directory
+                    var targetPath = Path.Combine(_config.BackupDir, relativePath);
+                    var targetDir = Path.GetDirectoryName(targetPath);
+                    if (targetDir != null)
+                    {
+                        Directory.CreateDirectory(targetDir);
+                    }
+
+                    // Copy the file to the working directory
+                    File.Copy(filePath, targetPath, overwrite: true);
+                    
+                    // Add to git index
+                    index.Add(relativePath.Replace('\\', '/'));
                     addedCount++;
 
                     if (addedCount % 100 == 0)
                     {
-                        Console.WriteLine($"Indexed {addedCount} files...");
+                        Console.WriteLine($"Copied and indexed {addedCount} files...");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Warning: Could not index {relativePath}: {ex.Message}");
+                    Console.WriteLine($"Warning: Could not copy and index {relativePath}: {ex.Message}");
                 }
             }
 
